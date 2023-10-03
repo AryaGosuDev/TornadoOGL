@@ -62,9 +62,8 @@ struct Particle {
 		vortexCenter = glm::vec3(0.0f, 0.0f, 0.0f); vVelocity = glm::vec3(0.0f, 1.0f, 0.0f);
 	}
 
-	bool operator<(const Particle& that) const {
-		// Sort in reverse order : far particles drawn first.
-		return this->cameradistance > that.cameradistance;
+	bool operator<(const Particle& other) const {
+		return this->cameradistance > other.cameradistance;
 	}
 };
 
@@ -75,8 +74,6 @@ void SortParticles() {
 	std::sort(&ParticlesContainer[0], &ParticlesContainer[MaxParticles]);
 }
 
-// Finds a Particle in ParticlesContainer which isn't used yet.
-// (i.e. life < 0);
 int FindUnusedParticle() {
 
 	for (int i = LastUsedParticle; i < MaxParticles; i++) {
@@ -92,7 +89,6 @@ int FindUnusedParticle() {
 	return -1;
 }
 
-//OGL SUX -> USE VULKAN
 int main() {
 
 	if (!glfwInit()){
@@ -106,7 +102,6 @@ int main() {
 	glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE); // To make MacOS happy; should not be needed
 	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
-	// Open a window and create its OpenGL context
 	window = glfwCreateWindow(1024, 768, "Tornado (OpenGL Sux, use Vulkan)", NULL, NULL);
 	if (window == NULL) {
 		fprintf(stderr, "Failed to open GLFW window.\n");
@@ -116,7 +111,7 @@ int main() {
 	}
 	glfwMakeContextCurrent(window);
 
-	// Initialize GLEW
+	// init GLEW
 	glewExperimental = true; // Needed for core profile
 	if (glewInit() != GLEW_OK) {
 		fprintf(stderr, "Failed to initialize GLEW\n");
@@ -125,7 +120,7 @@ int main() {
 		return -1;
 	}
 
-	// Setup Dear ImGui context
+	// Setup ImGui
 	IMGUI_CHECKVERSION();
 	ImGui::CreateContext();
 	ImGuiIO& io = ImGui::GetIO(); (void)io;
@@ -133,7 +128,6 @@ int main() {
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;      // Enable Gamepad Controls
 
 	ImGui::StyleColorsClassic();
-	// Setup Platform/Renderer bindings
 	ImGui_ImplGlfw_InitForOpenGL(window, true);
 	ImGui_ImplOpenGL3_Init("#version 330");
 	bool show_demo_window = true;
@@ -145,34 +139,29 @@ int main() {
 	// Hide the mouse and enable unlimited mouvement
 	glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
 
-	// Set the mouse at the center of the screen
+	// set mouse at the center of the screen
 	glfwPollEvents();
 	glfwSetCursorPos(window, 1024 / 2, 768 / 2);
 	glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
 
-	// Enable depth test
 	glEnable(GL_DEPTH_TEST);
-	// Accept fragment if it closer to the camera than the former one
 	glDepthFunc(GL_LESS);
 
 	GLuint VertexArrayID;
 	glGenVertexArrays(1, &VertexArrayID);
 	glBindVertexArray(VertexArrayID);
 
-	// Create and compile our GLSL program from the shaders
 	GLuint programID = LoadShaders("Particle.vertexshader", "Particle.fragmentshader");
 
-	// Vertex shader
 	GLuint CameraRight_worldspace_ID = glGetUniformLocation(programID, "CameraRight_worldspace");
 	GLuint CameraUp_worldspace_ID = glGetUniformLocation(programID, "CameraUp_worldspace");
 	GLuint ViewProjMatrixID = glGetUniformLocation(programID, "VP");
-	// fragment shader
 	GLuint TextureID = glGetUniformLocation(programID, "myTextureSampler");
 
 	static GLfloat* g_particule_position_size_data = new GLfloat[MaxParticles * 4];
 	static GLubyte* g_particule_color_data = new GLubyte[MaxParticles * 4];
 
-	//array init
+	//particle init
 	for (int i = 0; i < MaxParticles; i++) {
 		ParticlesContainer[i].cameradistance = -1.0f;
 		ParticlesContainer[i].height = -1.0f;
@@ -184,8 +173,7 @@ int main() {
 	}
 	GLuint Texture = loadDDS("particle.DDS");
 
-	// The VBO containing the 4 vertices of the particles.
-	// Thanks to instancing, they will be shared by all particles.
+	// instancing
 	static const GLfloat g_vertex_buffer_data[] = {
 		 -0.5f, -0.5f, 0.0f,
 		  0.5f, -0.5f, 0.0f,
@@ -197,18 +185,16 @@ int main() {
 	glBindBuffer(GL_ARRAY_BUFFER, billboard_vertex_buffer);
 	glBufferData(GL_ARRAY_BUFFER, sizeof(g_vertex_buffer_data), g_vertex_buffer_data, GL_STATIC_DRAW);
 
-	// The VBO containing the positions and sizes of the particles
+	// vbo positions
 	GLuint particles_position_buffer;
 	glGenBuffers(1, &particles_position_buffer);
 	glBindBuffer(GL_ARRAY_BUFFER, particles_position_buffer);
-	// Initialize with empty (NULL) buffer : it will be updated later, each frame.
 	glBufferData(GL_ARRAY_BUFFER, MaxParticles * 4 * sizeof(GLfloat), NULL, GL_STREAM_DRAW);
 
-	// The VBO containing the colors of the particles
+	// vbo colors
 	GLuint particles_color_buffer;
 	glGenBuffers(1, &particles_color_buffer);
 	glBindBuffer(GL_ARRAY_BUFFER, particles_color_buffer);
-	// Initialize with empty (NULL) buffer : it will be updated later, each frame.
 	glBufferData(GL_ARRAY_BUFFER, MaxParticles * 4 * sizeof(GLubyte), NULL, GL_STREAM_DRAW);
 
 	glm::vec3 CameraPosition(glm::inverse(viewMatrix)[3]);
@@ -217,15 +203,11 @@ int main() {
 	double lastTime = glfwGetTime();
 	do {
 		glfwPollEvents();
-		// Clear the screen
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 		double currentTime = glfwGetTime();
 		double delta = currentTime - lastTime;
 		lastTime = currentTime;
 
-		// Generate a fixed number of particles to account for the variable speed rate of particles
-		// which is related to their invalid state.
-		// A particle is marked invalid once it reaches the full height of the tornado.
 		int newparticles = 10;
 
 		for (int i = 0; i < newparticles; i++) {
@@ -235,7 +217,7 @@ int main() {
 				double randInitRadian = randMToN(0.0, 2 * glm::pi<double>());
 				ParticlesContainer[particleIndex].pos = glm::vec3(cos(randInitRadian), 0.0f, sin(randInitRadian));
 				ParticlesContainer[particleIndex].vortexCenter = glm::vec3(0.0f, 0.0f, 0.0f);
-				// Very bad way to generate a random color
+
 				ParticlesContainer[particleIndex].r = rand() % 256;
 				ParticlesContainer[particleIndex].g = rand() % 256;
 				ParticlesContainer[particleIndex].b = rand() % 256;
@@ -244,7 +226,7 @@ int main() {
 			}
 		}
 
-		// Simulate all particles
+		// simulate particles
 		int ParticlesCount = 0;
 		for (int i = 0; i < MaxParticles; i++) {
 
@@ -252,7 +234,6 @@ int main() {
 
 			if (p.height >= 0.0f && p.height <= TornadoHeight) {
 
-				// Simulate simple physics : gravity only, no collisions
 				p.cameradistance = glm::dot(p.pos - CameraPosition, p.pos - CameraPosition);
 
 				p.vortexCenter.y = p.pos.y;
@@ -266,7 +247,6 @@ int main() {
 				p.vVelocity = TornadoVerticalSpeed * glm::normalize(p.vVelocity);
 				p.pos.y = p.height = (float)delta * p.vVelocity.y + p.vortexCenter.y;
 
-				// Fill the GPU buffer
 				g_particule_position_size_data[4 * ParticlesCount + 0] = p.pos.x;
 				g_particule_position_size_data[4 * ParticlesCount + 1] = p.pos.y;
 				g_particule_position_size_data[4 * ParticlesCount + 2] = p.pos.z;
@@ -300,70 +280,55 @@ int main() {
 		glEnable(GL_BLEND);
 		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-		// Use our shader
 		glUseProgram(programID);
 
-		// Bind our texture in Texture Unit 0
 		glActiveTexture(GL_TEXTURE0);
 		glBindTexture(GL_TEXTURE_2D, Texture);
-		// Set our "myTextureSampler" sampler to use Texture Unit 0
 		glUniform1i(TextureID, 0);
 
-		// Same as the billboards tutorial
 		glUniform3f(CameraRight_worldspace_ID, viewMatrix[0][0], viewMatrix[1][0], viewMatrix[2][0]);
 		glUniform3f(CameraUp_worldspace_ID, viewMatrix[0][1], viewMatrix[1][1], viewMatrix[2][1]);
 
 		glUniformMatrix4fv(ViewProjMatrixID, 1, GL_FALSE, &ViewProjectionMatrix[0][0]);
 
-		// 1rst attribute buffer : vertices
 		glEnableVertexAttribArray(0);
 		glBindBuffer(GL_ARRAY_BUFFER, billboard_vertex_buffer);
 		glVertexAttribPointer(
-			0,                  // attribute. No particular reason for 0, but must match the layout in the shader.
-			3,                  // size
-			GL_FLOAT,           // type
-			GL_FALSE,           // normalized?
-			0,                  // stride
-			(void*)0            // array buffer offset
+			0,                  
+			3,                  
+			GL_FLOAT,           
+			GL_FALSE,           
+			0,                  
+			(void*)0            
 		);
 
-		// 2nd attribute buffer : positions of particles' centers
+		
 		glEnableVertexAttribArray(1);
 		glBindBuffer(GL_ARRAY_BUFFER, particles_position_buffer);
 		glVertexAttribPointer(
-			1,                                // attribute. No particular reason for 1, but must match the layout in the shader.
-			4,                                // size : x + y + z + size => 4
-			GL_FLOAT,                         // type
-			GL_FALSE,                         // normalized?
-			0,                                // stride
-			(void*)0                          // array buffer offset
+			1,                                
+			4,                                
+			GL_FLOAT,                         
+			GL_FALSE,                         
+			0,                                
+			(void*)0                          
 		);
 
-		// 3rd attribute buffer : particles' colors
 		glEnableVertexAttribArray(2);
 		glBindBuffer(GL_ARRAY_BUFFER, particles_color_buffer);
 		glVertexAttribPointer(
-			2,                                // attribute. No particular reason for 1, but must match the layout in the shader.
-			4,                                // size : r + g + b + a => 4
-			GL_UNSIGNED_BYTE,                 // type
-			GL_TRUE,                          // normalized?    *** YES, this means that the unsigned char[4] will be accessible with a vec4 (floats) in the shader ***
-			0,                                // stride
-			(void*)0                          // array buffer offset
+			2,                                
+			4,                                
+			GL_UNSIGNED_BYTE,                 
+			GL_TRUE,                          
+			0,                                
+			(void*)0                          
 		);
 
-		// These functions are specific to glDrawArrays*Instanced*.
-		// The first parameter is the attribute buffer we're talking about.
-		// The second parameter is the "rate at which generic vertex attributes advance when rendering multiple instances"
-		// http://www.opengl.org/sdk/docs/man/xhtml/glVertexAttribDivisor.xml
 		glVertexAttribDivisor(0, 0); // particles vertices : always reuse the same 4 vertices -> 0
 		glVertexAttribDivisor(1, 1); // positions : one per quad (its center)                 -> 1
 		glVertexAttribDivisor(2, 1); // color : one per quad    
 
-		// Draw the particules !
-		// This draws many times a small triangle_strip (which looks like a quad).
-		// This is equivalent to :
-		// for(i in ParticlesCount) : glDrawArrays(GL_TRIANGLE_STRIP, 0, 4), 
-		// but faster.
 		glDrawArraysInstanced(GL_TRIANGLE_STRIP, 0, 4, ParticlesCount);
 		//glDrawArraysInstanced(GL_TRIANGLE_STRIP, 0, 4, MaxParticles);
 
@@ -426,24 +391,24 @@ int main() {
 		glfwSwapBuffers(window);
 
 		
-	} // Check if the ESC key was pressed or the window was closed
+	} // check if the ESC key was pressed or the window was closed
 	while (glfwGetKey(window, GLFW_KEY_ESCAPE) != GLFW_PRESS && glfwWindowShouldClose(window) == 0);
     
 	delete[] g_particule_position_size_data;
 
-	// Cleanup ImGui
+
 	ImGui_ImplOpenGL3_Shutdown();
 	ImGui_ImplGlfw_Shutdown();
 	ImGui::DestroyContext();
 
-	// Cleanup VBO and shader
+
 	glDeleteBuffers(1, &particles_color_buffer);
 	glDeleteBuffers(1, &particles_position_buffer);
 	glDeleteBuffers(1, &billboard_vertex_buffer);
 	glDeleteProgram(programID);
 	glDeleteTextures(1, &Texture);
 	glDeleteVertexArrays(1, &VertexArrayID);
-	// Close OpenGL window and terminate GLFW
+	
 	glfwDestroyWindow(window);
 	glfwTerminate();
 
